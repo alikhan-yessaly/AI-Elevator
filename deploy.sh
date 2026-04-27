@@ -22,6 +22,9 @@ deploy() {
   sleep 3
   # Copy during the boot.py idle window (before BLE starts)
   mpremote connect $ID fs cp -r $DIR/. :/
+
+  sleep 4
+  python3 "$SCRIPT_DIR/pico_reset.py" "$PORT" || true
 }
 
 case "$1" in

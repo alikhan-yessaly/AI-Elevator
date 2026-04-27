@@ -4,7 +4,7 @@ from pibody import LEDTower, Servo
 from config import ELEVATOR_PINS, SERVO_POSES
 from telemetry import telemetry
 
-fan         = Pin(27, Pin.OUT)                         # slot F, pin 27
+fan         = Pin(26, Pin.OUT)                         # slot F, pin 27
 climate_led = LEDTower(ELEVATOR_PINS["climate_led"])  # slot H: heating/cooling indicator
 lights      = LEDTower(ELEVATOR_PINS["lights"])        # slot G: cabin lighting
 ser         = Servo(ELEVATOR_PINS["servo"])            # pin 9: dispenser
