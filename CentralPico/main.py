@@ -1,66 +1,86 @@
-from pibody import WiFi, Buzzer, LED, Button, SoundSensor, Switch, display
-from recorder import record_raw, play_raw, convert_raw_to_wav
+from pibody import WiFi, Button
+from recorder import init_i2s, reinit_i2s, record_to_wav, MAX_REC_BYTES
+from sdcard import SDCard
 from secrets import STT_KEY, SSID, PASSWORD, LLM_KEY, LLM_URL, MODEL, STT_HOST, STT_PATH
 from ai.stt import STT
 from ai.llm import LLM
 from ai.system_prompts import system_prompt
 from ui.ui import UI
-
-from BLE import BLEMultiClient, _Slot, _ELEVATOR_SVC_UUID, _ELEVATOR_TX_UUID, _ELEVATOR_RX_UUID, _SCALES_SVC_UUID, _SCALES_TX_UUID, _SCALES_RX_UUID
+from BLE import (BLEMultiClient, _Slot,
+                 _ELEVATOR_SVC_UUID, _ELEVATOR_TX_UUID, _ELEVATOR_RX_UUID,
+                 _SCALES_SVC_UUID,   _SCALES_TX_UUID,   _SCALES_RX_UUID)
 from TelemetryData import ElevatorData, ScalesData
 
-from machine import Pin
+import os
+import gc
 import time
-WAV_FILE = "recording.wav"
 
-pb_switch    = Pin(0,  Pin.IN, Pin.PULL_DOWN)
-dispense_btn = Pin(20, Pin.IN, Pin.PULL_DOWN)
-gate_btn     = Pin(21, Pin.IN, Pin.PULL_DOWN)
-busy_led    = LED("B")
-buzzer      = Buzzer("C")
-btn         = Button("D")
-rec_led     = LED("E")
-mic         = SoundSensor("F")._analog
+WAV_FILE = "/sd/recording.wav"
 
-wifi = WiFi()
+button = Button("E")
+
+# ── UI initialised first so every subsequent failure can show on screen ───────
 ui = UI()
-llm = LLM(key=LLM_KEY, url=LLM_URL, model=MODEL, system_prompt=system_prompt)
-stt = STT(host=STT_HOST, path=STT_PATH, api_key=STT_KEY)
 
-wifi_state = "Нет"
-ble_state = "Нет"
-_dispense_pending = False
-_dispense_last_ms = 0
-_gate_pending     = False
-_gate_last_ms     = 0
+# ── SD card ───────────────────────────────────────────────────────────────────
+_sd_ok = False
+try:
+    sd = SDCard()
+    os.mount(sd, "/sd")
+    _sd_ok = True
+    print("[SD] Mounted OK")
+except Exception as e:
+    ui.status_message("SD: " + str(e), error=True)
 
-def _on_dispense_irq(pin):
-    global _dispense_pending, _dispense_last_ms
-    now = time.ticks_ms()
-    if time.ticks_diff(now, _dispense_last_ms) >= 1000:
-        _dispense_pending = True
-        _dispense_last_ms = now
+# ── I2S microphone ────────────────────────────────────────────────────────────
+audio_in = None
+try:
+    gc.collect()
+    audio_in = init_i2s()
+    print("[I2S] Ready")
+except Exception as e:
+    ui.status_message("Mic: " + str(e), error=True)
 
-def _on_gate_irq(pin):
-    global _gate_pending, _gate_last_ms
-    now = time.ticks_ms()
-    if time.ticks_diff(now, _gate_last_ms) >= 1000:
-        _gate_pending = True
-        _gate_last_ms = now
+# ── WiFi / AI clients ─────────────────────────────────────────────────────────
+wifi = WiFi()
+llm  = LLM(key=LLM_KEY, url=LLM_URL, model=MODEL, system_prompt=system_prompt)
+stt  = STT(host=STT_HOST, path=STT_PATH, api_key=STT_KEY)
 
-dispense_btn.irq(trigger=Pin.IRQ_RISING, handler=_on_dispense_irq)
-gate_btn.irq(trigger=Pin.IRQ_RISING, handler=_on_gate_irq)
+# ── State ─────────────────────────────────────────────────────────────────────
+_wifi_ok      = False
+_elevator_ble = False
+_scales_ble   = False
+_ui_dirty     = False   # set True by BLE IRQ callbacks; cleared in main loop
 
-def update_ble_state(state):
-    global ble_state
-    ble_state = state
-    
+
+def _redraw_status():
+    ui.state(_wifi_ok, _elevator_ble, _scales_ble)
+
+
+def _set_elevator_ble(connected):
+    # Called from BLE IRQ context — only set flags, never touch display here.
+    global _elevator_ble, _ui_dirty
+    _elevator_ble = connected
+    _ui_dirty     = True
+
+
+def _set_scales_ble(connected):
+    global _scales_ble, _ui_dirty
+    _scales_ble = connected
+    _ui_dirty   = True
+
+
 def update_elevator(data):
     try:
-        ui.elevator_data = ElevatorData(temperature=data['t'], humidity=data['h'], volume=data['v'], weight=data['w'])
+        ui.elevator_data = ElevatorData(
+            temperature=data['t'], humidity=data['h'],
+            volume=data['v'],      weight=data['w'],
+            cooling=data.get('cool', False),
+            heating=data.get('heat', False))
         ui.update()
     except Exception as e:
         print("Elevator data error:", e)
+
 
 def update_scales(data):
     try:
@@ -69,28 +89,34 @@ def update_scales(data):
     except Exception as e:
         print("Scales data error:", e)
 
+
 def ensure_wifi():
+    global _wifi_ok
     if wifi.is_connected():
+        if not _wifi_ok:
+            _wifi_ok = True
+            _redraw_status()
         return True
-    ui.status_message(f"Переподключаюсь к {SSID}...")
+    _wifi_ok = False
+    _redraw_status()
+    ui.status_message("Переподключаюсь к WiFi...")
     ok = wifi.ensure_connected(SSID, PASSWORD, retries=5, delay=3)
-    if ok:
-        global wifi_state
-        wifi_state = "Есть"
-        ui.status_message(f"Подключился к {SSID}")
-    else:
-        ui.status_message("WiFi недоступен", error=True)
+    _wifi_ok = ok
+    ui.status_message("WiFi подключён" if ok else "WiFi недоступен", error=not ok)
+    _redraw_status()
     return ok
 
-ui.status_message("Подключаюсь к BLE...")
+
+# ── BLE ───────────────────────────────────────────────────────────────────────
+ui.status_message("Инициализация BLE...")
 elevator_slot = _Slot(
     "Elevator Pico",
     service_uuid=_ELEVATOR_SVC_UUID,
     tx_uuid=_ELEVATOR_TX_UUID,
     rx_uuid=_ELEVATOR_RX_UUID,
     on_payload=update_elevator,
-    on_connect=lambda: update_ble_state("Есть"),
-    on_disconnect=lambda: update_ble_state("Нет"),
+    on_connect=lambda: _set_elevator_ble(True),
+    on_disconnect=lambda: _set_elevator_ble(False),
 )
 scales_slot = _Slot(
     "Scales Pico",
@@ -98,66 +124,95 @@ scales_slot = _Slot(
     tx_uuid=_SCALES_TX_UUID,
     rx_uuid=_SCALES_RX_UUID,
     on_payload=update_scales,
+    on_connect=lambda: _set_scales_ble(True),
+    on_disconnect=lambda: _set_scales_ble(False),
 )
 ble_client = BLEMultiClient([elevator_slot, scales_slot])
 ble_client.start()
 
-ui.status_message(f"Подключаюсь к {SSID}...")
-if wifi.ensure_connected(SSID, PASSWORD, retries=10, delay=3):
-    wifi_state = "Есть"
-    ui.status_message(f"Подключился к {SSID}")
+# ── Initial WiFi (3 retries — don't block BLE scan for 30 s) ─────────────────
+ui.status_message("Подключаюсь к WiFi...")
+if wifi.ensure_connected(SSID, PASSWORD, retries=3, delay=2):
+    _wifi_ok = True
+    ui.status_message("WiFi подключён")
 else:
     ui.status_message("WiFi недоступен — работаю без сети", error=True)
 
+_redraw_status()
 
+# ── Main loop ─────────────────────────────────────────────────────────────────
+_last_status_ms = 0
 
 try:
     while True:
+        now = time.ticks_ms()
         ble_client.tick()
 
-        if _dispense_pending:
-            _dispense_pending = False
-            ok = ble_client.send("Elevator Pico", "dispense()")
-            if ok:
-                ui.status_message("Команда выдачи отправлена")
-            else:
-                ui.status_message("BLE не подключён", error=True)
+        # Flush pending BLE state change to display (IRQ-safe: only set flag in IRQ)
+        if _ui_dirty:
+            _ui_dirty = False
+            _redraw_status()
 
-        if _gate_pending:
-            _gate_pending = False
-            ok = ble_client.send("Scales Pico", "open_gate()")
-            if ok:
-                ui.status_message("Ворота открываются")
-            else:
-                ui.status_message("BLE не подключён", error=True)
+        # Refresh status bar every 2 s and detect silent WiFi drops
+        if time.ticks_diff(now, _last_status_ms) >= 2000:
+            _last_status_ms = now
+            live = wifi.is_connected()
+            if live != _wifi_ok:
+                _wifi_ok = live
+            _redraw_status()
 
-        if btn.read():
-            ui.state(wifi_state, ble_state)
+        # ── Hardware not ready — attempt recovery then yield ──────────────────
+        if not _sd_ok:
+            try:
+                sd = SDCard()
+                os.mount(sd, "/sd")
+                _sd_ok = True
+                ui.status_message("SD подключена")
+                _redraw_status()
+            except Exception:
+                time.sleep_ms(5)
+                continue
+
+        if audio_in is None:
+            audio_in = reinit_i2s(None)
+            if audio_in is None:
+                ui.status_message("Нет микрофона", error=True)
+                time.sleep_ms(5)
+                continue
+            ui.status_message("Микрофон готов")
+
+        # ── Button pressed → recording pipeline ───────────────────────────────
+        if button.read():
             ui.clear_bottom()
-
-            # Recording
-            rec_led.on()
+            _redraw_status()
             ui.recording_LED()
-            status = record_raw(mic, btn)
-            if status < 0:
-                ui.status_message("Maximum record time reached", True)
+
+            try:
+                n_bytes = record_to_wav(audio_in, button.read, WAV_FILE)
+            except Exception as e:
+                print("[REC] Error:", e)
+                ui.status_message("Ошибка записи: " + str(e), error=True)
+                audio_in = reinit_i2s(audio_in)
+                time.sleep_ms(200)
+                continue
+
             ui.clear_bottom()
-            rec_led.off()
-            if pb_switch():
-                play_raw(buzzer)
+
+            if n_bytes == 0:
+                audio_in = reinit_i2s(audio_in)
+                ui.status_message("Запись пуста", error=True)
+                continue
+
+            if n_bytes >= MAX_REC_BYTES:
+                ui.status_message("Достигнут лимит записи")
 
             ble_client.tick()
 
-            # Thinking — guard every network call with a WiFi check
-            busy_led.on()
+            # ── STT → LLM → BLE ───────────────────────────────────────────────
             ui.status_large("Думаю...")
             try:
-                convert_raw_to_wav(dest_file=WAV_FILE)
-                ble_client.tick()
-
                 if not ensure_wifi():
                     ui.status_message("Нет WiFi — пропускаю", error=True)
-                    busy_led.off()
                     continue
 
                 text = stt.transcribe_from_file(WAV_FILE)
@@ -167,7 +222,6 @@ try:
 
                 if not ensure_wifi():
                     ui.status_message("Нет WiFi — пропускаю", error=True)
-                    busy_led.off()
                     continue
 
                 response = llm.ask(text)
@@ -175,15 +229,15 @@ try:
                 ui.command(response)
 
                 send_ok = ble_client.send("Elevator Pico", response)
-                if send_ok:
-                    ui.status_message("Успешно отправлено BLE")
-                else:
-                    ui.status_message("Не удалось отправить BLE")
+                ui.status_message(
+                    "Успешно отправлено BLE" if send_ok else "Не удалось отправить BLE",
+                    error=not send_ok)
+
             except Exception as e:
-                print("Pipeline error:", e)
+                print("[Pipeline] Error:", e)
                 ui.status_message("Ошибка: " + str(e), error=True)
 
-            busy_led.off()
+        time.sleep_ms(5)
+
 except KeyboardInterrupt:
     ble_client.stop()
-

@@ -1,132 +1,89 @@
-import machine
-import utime
-import array
-import gc
+from machine import Pin, I2S
 import os
+import gc
 
-gc.collect()
+SAMPLE_RATE   = 16000
+BITS          = 16
+CHANNELS      = 1
+MAX_SECONDS   = 15
+IBUF          = 4096
+READ_BUF_SIZE = 1024  # ~32ms per chunk at 16kHz 16-bit mono
 
-SAMPLE_RATE = 16000
-MAX_REC_SECONDS = 15
-CHUNK_SIZE = 1024
+MAX_REC_BYTES = MAX_SECONDS * SAMPLE_RATE * (BITS // 8) * CHANNELS
 
-RAW_FILE = "recording.raw"
+_SCK_PIN = 0
+_WS_PIN  = 1
+_SD_PIN  = 2
+_I2S_ID  = 0
 
-SAMPLE_INTERVAL_US = 1_000_000 // SAMPLE_RATE  # 62 µs
+
+def init_i2s():
+    return I2S(
+        _I2S_ID,
+        sck    = Pin(_SCK_PIN),
+        ws     = Pin(_WS_PIN),
+        sd     = Pin(_SD_PIN),
+        mode   = I2S.RX,
+        bits   = BITS,
+        format = I2S.MONO,
+        rate   = SAMPLE_RATE,
+        ibuf   = IBUF,
+    )
 
 
-# =========================
-# 1. RECORD RAW (8-bit)
-# =========================
-def record_raw(mic, button, filename=RAW_FILE):
+def reinit_i2s(audio_in):
+    """Deinit the existing I2S instance and create a fresh one. Returns new instance or None."""
+    try:
+        if audio_in is not None:
+            audio_in.deinit()
+    except Exception:
+        pass
+    try:
+        gc.collect()
+        return init_i2s()
+    except Exception as e:
+        print("[I2S] reinit failed:", e)
+        return None
+
+
+def record_to_wav(audio_in, is_recording, wav_path):
     """
-        This function records sound from mic module until button returns value 1 and stores recording in filename in flash memory.
+    Blocking I2S recording.
+    Calls is_recording() each ~32ms chunk; stops when it returns falsy or max time hit.
+    Writes a complete 16-bit mono WAV directly to wav_path.
+    Returns total audio bytes written (0 = empty, >= MAX_REC_BYTES = auto-stopped).
     """
-    max_samples = SAMPLE_RATE * MAX_REC_SECONDS
-    print(f"Recording seconds to RAW file (8-bit)...")
+    from wav import create_wav_header
+    gc.collect()
 
-    # 'B' = unsigned 8-bit int
-    chunk = array.array('B', [0] * CHUNK_SIZE)
-    prev_val = 0
-    samples_written = 0
+    buf   = bytearray(READ_BUF_SIZE)
+    mv    = memoryview(buf)
+    total = 0
 
     try:
-        os.remove(filename)
-    except:
+        os.remove(wav_path)
+    except OSError:
         pass
 
-    with open(filename, 'wb') as f:
-        while button.read():
-            t = utime.ticks_us()
-            for i in range(CHUNK_SIZE):
-                # read_u16() returns 0–65535; shift down to 0–255
-                raw = mic.read_u16() >> 8
-                smoothed = (raw + prev_val) // 2
-                chunk[i] = smoothed
-                prev_val = smoothed
+    # Warmup: discard first buffer so the mic stabilises before we open the file
+    audio_in.readinto(mv)
 
-                t = utime.ticks_add(t, SAMPLE_INTERVAL_US)
-                utime.sleep_us(max(0, utime.ticks_diff(t, utime.ticks_us())))
-
-            f.write(chunk)
-            samples_written += CHUNK_SIZE
-
-            if samples_written >= max_samples:
-                return -1
-    return 0
-
-
-# =========================
-# 2. PLAY RAW (8-bit)
-# =========================
-def play_raw(buzzer, filename=RAW_FILE):
-    print("Playing RAW (8-bit)...")
-    buzzer.freq(200000)  # carrier frequency
-
-    chunk = bytearray(CHUNK_SIZE)
-
-    with open(filename, 'rb') as f:
-        while True:
-            n = f.readinto(chunk)
-            if not n:
-                break
-
-            t = utime.ticks_us()
-            for i in range(n):
-                # Shift 0–255 up to 0–65535 for PWM
-                buzzer.duty_u16(chunk[i] << 8)
-
-                t = utime.ticks_add(t, SAMPLE_INTERVAL_US)
-                utime.sleep_us(max(0, utime.ticks_diff(t, utime.ticks_us())))
-
-    buzzer.duty_u16(0)
-    print("Playback done!")
-
-
-# =========================
-# 3. CONVERT RAW → WAV (8-bit)
-# =========================
-def convert_raw_to_wav(dest_file, soucre_file=RAW_FILE):
-    print("Converting RAW → WAV (8-bit)...")
-
-    try:
-        os.remove(dest_file)
-    except:
-        pass
-
-    size = os.stat(soucre_file)[6]  # raw file size in bytes
-
-    BITS_PER_SAMPLE = 8
-    NUM_CHANNELS = 1
-    BLOCK_ALIGN = NUM_CHANNELS * (BITS_PER_SAMPLE // 8)  # = 1
-    BYTE_RATE = SAMPLE_RATE * BLOCK_ALIGN                 # = 16000
-
-    with open(dest_file, 'wb') as f:
-        # === WAV HEADER ===
-        f.write(b'RIFF')
-        f.write((36 + size).to_bytes(4, 'little'))
-        f.write(b'WAVE')
-
-        # fmt chunk
-        f.write(b'fmt ')
-        f.write((16).to_bytes(4, 'little'))              # chunk size
-        f.write((1).to_bytes(2, 'little'))               # PCM format
-        f.write((NUM_CHANNELS).to_bytes(2, 'little'))    # mono
-        f.write((SAMPLE_RATE).to_bytes(4, 'little'))     # sample rate
-        f.write((BYTE_RATE).to_bytes(4, 'little'))       # byte rate
-        f.write((BLOCK_ALIGN).to_bytes(2, 'little'))     # block align
-        f.write((BITS_PER_SAMPLE).to_bytes(2, 'little')) # bits per sample
-
-        # data chunk
-        f.write(b'data')
-        f.write((size).to_bytes(4, 'little'))
-
-        # === COPY AUDIO DATA ===
-        with open(soucre_file, 'rb') as r:
-            while True:
-                chunk = r.read(CHUNK_SIZE)  # 1 byte per sample
-                if not chunk:
+    with open(wav_path, "wb") as f:
+        f.seek(44)  # leave room for the 44-byte WAV header
+        while is_recording() and total < MAX_REC_BYTES:
+            n = audio_in.readinto(mv)
+            if n > 0:
+                try:
+                    f.write(mv[:n])
+                except OSError as e:
+                    print("[REC] SD write error:", e)
                     break
-                f.write(chunk)
+                total += n
 
-    print(f"WAV file ready! Size: {size}")
+        if total > 0:
+            num_samples = total // ((BITS // 8) * CHANNELS)
+            f.seek(0)
+            f.write(create_wav_header(SAMPLE_RATE, BITS, CHANNELS, num_samples))
+
+    gc.collect()
+    return total

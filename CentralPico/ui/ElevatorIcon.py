@@ -35,24 +35,40 @@ def find_xy(x, y):
     display.pixel(x, y, display.RED)
 
 
+_CAP_GREY = display.color(100, 100, 100)
+
+
 class ElevatorIcon():
-    def __init__(self, pivot_x=0, pivot_y = 0, level=0) -> None:
-        self.pivot_x = pivot_x
-        self.pivot_y = pivot_y
-        self._last_level = 0
-        
+    def __init__(self, pivot_x=0, pivot_y=0, level=0) -> None:
+        self.pivot_x        = pivot_x
+        self.pivot_y        = pivot_y
+        self._last_level    = 0
+        self._last_cap_color = _CAP_GREY
 
         self.draw_elevator()
         self.fill_elevator(level)
-        
 
-    def __call__(self, level):
+    def __call__(self, level, cooling=False, heating=False):
         self.fill_elevator(level)
+        self._update_cap(cooling, heating)
+
+    def _cap_color(self, cooling, heating):
+        if cooling:
+            return display.BLUE
+        if heating:
+            return display.RED
+        return _CAP_GREY
+
+    def _update_cap(self, cooling, heating):
+        color = self._cap_color(cooling, heating)
+        if color != self._last_cap_color:
+            self._last_cap_color = color
+            display.fill_polygon(cap, self.pivot_x, self.pivot_y, color)
 
     def draw_elevator(self):
         display.fill_polygon(silhouette, self.pivot_x, self.pivot_y, display.WHITE)
-        display.fill_polygon(cap,       self.pivot_x, self.pivot_y, display.color(100, 100, 100))
-        display.fill_polygon(inside,    self.pivot_x, self.pivot_y, display.BLACK)
+        display.fill_polygon(cap,        self.pivot_x, self.pivot_y, _CAP_GREY)
+        display.fill_polygon(inside,     self.pivot_x, self.pivot_y, display.BLACK)
 
 
 

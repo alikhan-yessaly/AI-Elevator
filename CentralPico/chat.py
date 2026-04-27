@@ -1,4 +1,4 @@
-from pibody import WiFi, Buzzer, LED, Button, SoundSensor, Switch, display
+from pibody import WiFi, LED, Button, SoundSensor, display
 from recorder import record_raw, play_raw, convert_raw_to_wav
 from secrets import STT_KEY, SSID, PASSWORD, LLM_KEY, LLM_URL, MODEL, STT_HOST, STT_PATH
 from ai.stt import STT
@@ -8,12 +8,9 @@ import os
 
 WAV_FILE = "recording.wav"
 
-mode_switch = Switch("A")
-busy_led    = LED("B")
-buzzer      = Buzzer("C")
-btn         = Button("D")
-rec_led     = LED("E")
-mic         = SoundSensor("F")._analog
+btn     = Button("E")
+rec_led = LED("E")
+mic     = SoundSensor("F")._analog
 
 wifi = WiFi()
 display.print(f"Connecting to {SSID}")
@@ -42,7 +39,6 @@ def record():
         display.print("Maximum record time reached")
 
 def audio_to_command(verbose=False):
-    busy_led.on()    
     convert_raw_to_wav(dest_file=WAV_FILE)
     text = stt.transcribe_from_file(WAV_FILE)
     if verbose:
@@ -50,7 +46,6 @@ def audio_to_command(verbose=False):
         display.print(text)
 
     response = llm.ask(text)
-    busy_led.off()
     return response
 
 

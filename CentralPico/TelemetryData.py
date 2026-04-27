@@ -1,17 +1,13 @@
 
 class ElevatorData:
-    def __init__(self, temperature: int = 0, humidity: int = 0, volume: int = 0, weight:int = 0) -> None:
-        """Initialize telemetry values.
-
-        Args:
-            temperature (int): Temperature in degrees Celsius.
-            humidity (int): Relative humidity in percent (0–100).
-            volume (int): Volume level in percent (0–100).
-        """
+    def __init__(self, temperature: int = 0, humidity: int = 0, volume: int = 0, weight: int = 0,
+                 cooling: bool = False, heating: bool = False) -> None:
         self.temperature = temperature
-        self.humidity = humidity
-        self.volume = volume
-        self.weight = weight
+        self.humidity    = humidity
+        self.volume      = volume
+        self.weight      = weight
+        self.cooling     = cooling
+        self.heating     = heating
         
 class ScalesData:
     def __init__(self, weight: int = 0, car_presence: bool = False):

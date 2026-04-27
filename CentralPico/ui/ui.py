@@ -18,8 +18,11 @@ class UI:
         self.update()
 
     def update(self):
-        volume = self.elevator_data.volume
-        self.elevator_icon(volume)
+        self.elevator_icon(
+            self.elevator_data.volume,
+            self.elevator_data.cooling,
+            self.elevator_data.heating,
+        )
         self.td.render_elevator(self.elevator_data)
         self.td.render_scales(self.scales_data)
 
@@ -64,10 +67,22 @@ class UI:
 
         self._print_line(message, 300, background, text_color)
 
-    def state(self, wifi, ble):
-        message = f"WiFi: {wifi}. BLE: {ble}."
-        print(message)
-        self._print_line(message, 190, text_color=display.WHITE)
+    def state(self, wifi_ok, elevator_ok, scales_ok):
+        print("WiFi:%s Elev:%s Scal:%s" % (wifi_ok, elevator_ok, scales_ok))
+        _GREY = display.color(80, 80, 80)
+        display.fill_rect(0, 190, 240, 20, display.BLACK)
+
+        # WiFi dot + label
+        display.fill_circle(10, 200, 5, display.GREEN if wifi_ok else _GREY)
+        display.text("WiFi", 20, 192)
+
+        # Elevator BLE dot + label
+        display.fill_circle(90, 200, 5, display.GREEN if elevator_ok else _GREY)
+        display.text("Elev", 100, 192)
+
+        # Scales BLE dot + label
+        display.fill_circle(170, 200, 5, display.GREEN if scales_ok else _GREY)
+        display.text("Scal", 180, 192)
 
     def heard(self, message):
         message = f"Я услышал: {message}"

@@ -58,9 +58,11 @@ class WiFi:
                 return True
             print(f"[WiFi] Reconnect attempt {attempt + 1}/{retries}...")
             try:
-                self.wlan.active(False)
-                time.sleep(0.5)
-                self.wlan.active(True)
+                # Do NOT call active(False) — on Pico W the CYW43 chip is shared with
+                # BLE and disabling it disrupts ongoing BLE connections.
+                if not self.wlan.active():
+                    self.wlan.active(True)
+                    time.sleep(0.2)
                 self.wlan.connect(ssid, password)
                 start = time.ticks_ms()
                 while not self.wlan.isconnected():
