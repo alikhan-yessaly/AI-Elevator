@@ -27,6 +27,9 @@ _ST_DISCOVERING = const(3)
 _ST_SUBSCRIBING = const(4)
 _ST_READY       = const(5)
 
+_STUCK_TIMEOUT_MS = const(15_000)
+_MAX_QUEUE        = const(30)
+
 _ELEVATOR_SVC_UUID = bluetooth.UUID(0x181B)
 _ELEVATOR_TX_UUID  = bluetooth.UUID("6E400003-B5A3-F393-E0A9-E50E24DCCA9E")
 _ELEVATOR_RX_UUID  = bluetooth.UUID("6E400002-B5A3-F393-E0A9-E50E24DCCA9E")
@@ -68,7 +71,8 @@ class _Slot:
         self.on_connect    = on_connect
         self.on_disconnect = on_disconnect
         # runtime state
-        self.state         = _ST_IDLE
+        self.state            = _ST_IDLE
+        self.state_entered_ms = 0
         self.conn_handle   = None
         self.addr_type     = None
         self.addr          = None
@@ -129,8 +133,15 @@ class BLEMultiClient:
                 total = len(data)
                 cs    = slot.att_payload_max
                 if total <= cs:
+                    if len(slot.write_queue) >= _MAX_QUEUE:
+                        print("[TX] Queue full for %s — dropping" % device_name)
+                        return False
                     slot.write_queue.append(data)
                 else:
+                    chunks_needed = 2 + (total + cs - 1) // cs  # BEGIN + data chunks + END
+                    if len(slot.write_queue) + chunks_needed > _MAX_QUEUE:
+                        print("[TX] Queue full for %s — dropping" % device_name)
+                        return False
                     slot.write_queue.append(("BEGIN:%d" % total).encode())
                     offset = 0
                     while offset < total:
@@ -142,20 +153,44 @@ class BLEMultiClient:
         return False
 
     def tick(self):
+        now = time.ticks_ms()
+
         if not self._scanning:
             if any(s.state == _ST_IDLE for s in self._slots):
-                now = time.ticks_ms()
                 if time.ticks_diff(now, self._last_scan_ms) >= self._retry_delay:
                     self._scan()
 
         for slot in self._slots:
+            # Stuck-state watchdog: reset any slot that has been mid-handshake too long
+            if slot.state not in (_ST_IDLE, _ST_READY, _ST_SCANNING):
+                if time.ticks_diff(now, slot.state_entered_ms) > _STUCK_TIMEOUT_MS:
+                    print("[BLE] %s stuck in state %d — forcing reset" % (slot.device_name, slot.state))
+                    if slot.conn_handle is not None:
+                        try:
+                            self._ble.gap_disconnect(slot.conn_handle)
+                        except Exception:
+                            pass
+                    # _reset_slot is called by the disconnect IRQ; force it if handle is gone
+                    if slot.conn_handle is None:
+                        self._reset_slot(slot)
+                    continue
+
             if slot.state == _ST_READY and slot.write_queue:
                 chunk = slot.write_queue.pop(0)
                 try:
                     self._ble.gattc_write(slot.conn_handle, slot.rx_handle, chunk, 0)
                 except Exception as e:
-                    print("[TX] Write error on %s: %s" % (slot.device_name, e))
+                    print("[TX] Write error on %s: %s — disconnecting" % (slot.device_name, e))
                     slot.write_queue.clear()
+                    if slot.conn_handle is not None:
+                        try:
+                            self._ble.gap_disconnect(slot.conn_handle)
+                        except Exception:
+                            self._reset_slot(slot)
+
+    def _set_state(self, slot, state):
+        slot.state            = state
+        slot.state_entered_ms = time.ticks_ms()
 
     def _scan(self):
         print("[BLE] Scanning...")
@@ -170,17 +205,17 @@ class BLEMultiClient:
             self._ble.gap_connect(slot.addr_type, slot.addr)
 
     def _reset_slot(self, slot):
-        slot.state         = _ST_IDLE
-        slot.conn_handle   = None
-        slot.addr_type     = None
-        slot.addr          = None
-        slot.service_start = None
-        slot.service_end   = None
-        slot.tx_handle     = None
-        slot.rx_handle     = None
+        self._set_state(slot, _ST_IDLE)
+        slot.conn_handle      = None
+        slot.addr_type        = None
+        slot.addr             = None
+        slot.service_start    = None
+        slot.service_end      = None
+        slot.tx_handle        = None
+        slot.rx_handle        = None
         slot.write_queue.clear()
-        slot.in_buffer     = bytearray()
-        slot.in_expected   = None
+        slot.in_buffer        = bytearray()
+        slot.in_expected      = None
 
     def _irq(self, event, data):
 
@@ -191,7 +226,7 @@ class BLEMultiClient:
                 if slot.state == _ST_IDLE and slot.device_name == name:
                     slot.addr_type = addr_type
                     slot.addr      = bytes(addr)
-                    slot.state     = _ST_CONNECTING
+                    self._set_state(slot, _ST_CONNECTING)
                     self._addr_to_slot[slot.addr] = slot
                     print("[BLE] Found '%s'" % name)
 
@@ -203,18 +238,24 @@ class BLEMultiClient:
             not_found = [s.device_name for s in self._slots if s.state == _ST_IDLE]
             if not_found:
                 print("[BLE] Not found: %s" % not_found)
-            self._connect_next()
+            try:
+                self._connect_next()
+            except Exception as e:
+                print("[BLE] connect_next error: %s" % e)
 
         elif event == _IRQ_PERIPHERAL_CONNECT:
             conn_handle, addr_type, addr = data
             slot = self._addr_to_slot.get(bytes(addr))
             if slot:
                 slot.conn_handle = conn_handle
-                slot.state       = _ST_DISCOVERING
+                self._set_state(slot, _ST_DISCOVERING)
                 self._handle_to_slot[conn_handle] = slot
                 print("[BLE] Connected to %s (handle=%d)" % (slot.device_name, conn_handle))
                 self._ble.gattc_discover_services(conn_handle)
-            self._connect_next()
+            try:
+                self._connect_next()
+            except Exception as e:
+                print("[BLE] connect_next error: %s" % e)
 
         elif event == _IRQ_PERIPHERAL_DISCONNECT:
             conn_handle, _, _ = data
@@ -268,7 +309,7 @@ class BLEMultiClient:
                     print("[BLE] Missing handles for %s — disconnecting" % slot.device_name)
                     self._ble.gap_disconnect(conn_handle)
                 else:
-                    slot.state = _ST_SUBSCRIBING
+                    self._set_state(slot, _ST_SUBSCRIBING)
                     self._ble.gattc_write(
                         conn_handle,
                         slot.tx_handle + 1,
@@ -281,7 +322,7 @@ class BLEMultiClient:
             slot = self._handle_to_slot.get(conn_handle)
             if slot and slot.state == _ST_SUBSCRIBING:
                 if status == 0:
-                    slot.state = _ST_READY
+                    self._set_state(slot, _ST_READY)
                     print("[BLE] Ready: %s" % slot.device_name)
                     if slot.on_connect:
                         slot.on_connect()
@@ -327,9 +368,7 @@ class BLEMultiClient:
     def _dispatch(self, slot, raw):
         try:
             payload = json.loads(raw)
-        except Exception:
-            try:
-                payload = raw.decode("utf-8")
-            except Exception:
-                payload = raw
+        except Exception as e:
+            print("[RX] JSON parse error on %s: %s" % (slot.device_name, e))
+            return
         slot.on_payload(payload)

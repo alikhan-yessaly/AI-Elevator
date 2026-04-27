@@ -52,6 +52,30 @@ class WiFi:
         print("IP address:", self.wlan.ifconfig()[0])
         return self.wlan.ifconfig()
 
+    def ensure_connected(self, ssid: str, password: str, retries: int = 5, delay: int = 3, timeout: int = 15):
+        for attempt in range(retries):
+            if self.wlan.isconnected():
+                return True
+            print(f"[WiFi] Reconnect attempt {attempt + 1}/{retries}...")
+            try:
+                self.wlan.active(False)
+                time.sleep(0.5)
+                self.wlan.active(True)
+                self.wlan.connect(ssid, password)
+                start = time.ticks_ms()
+                while not self.wlan.isconnected():
+                    if time.ticks_diff(time.ticks_ms(), start) > timeout * 1000:
+                        raise RuntimeError("Timed out")
+                    time.sleep(0.5)
+                print("[WiFi] Reconnected! IP:", self.wlan.ifconfig()[0])
+                return True
+            except Exception as e:
+                print(f"[WiFi] Attempt {attempt + 1} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(delay)
+        print("[WiFi] All reconnect attempts failed.")
+        return False
+
     def disconnect(self):
         if self.wlan.isconnected():
             self.wlan.disconnect()

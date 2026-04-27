@@ -11,7 +11,7 @@ class UI:
         self.scales_data = ScalesData()
         title = "Умное Хранилище"
         display.text(title, (240 - len(title) * 12) // 2, 5, fg=display.WHITE, font=display.font_large)
-        self.td = TelemetryDisplayer(elevator_pivot=(100, 40), scales_pivot=(100, 140))
+        self.td = TelemetryDisplayer(elevator_pivot=(100, 40), scales_pivot=(100, 133))
         self.update()
     
     def __call__(self):

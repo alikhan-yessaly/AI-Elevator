@@ -3,7 +3,7 @@ import bluetooth
 from helpers import periodic
 from ble_transport import BLETransport
 from config import BLE_NAMES, BLE_UUIDS
-from actuators import light_on, light_off, dispense, auto_mode, actuator_state
+from actuators import heater_on, heater_off, cooler_on, cooler_off, light_on, light_off, dispense, auto_mode, actuator_state
 from telemetry import telemetry, get_telemetry
 
 
@@ -18,9 +18,13 @@ def build_payload():
 
 def command_handler(cmd):
     commands = {
-        "light_on()":  light_on,
-        "light_off()": light_off,
-        "dispense()":  dispense,
+        "heater_on()":  heater_on,
+        "heater_off()": heater_off,
+        "cooler_on()":  cooler_on,
+        "cooler_off()": cooler_off,
+        "light_on()":   light_on,
+        "light_off()":  light_off,
+        "dispense()":   dispense,
     }
     fn = commands.get(cmd)
     if fn is None:
@@ -47,16 +51,16 @@ ble.start()
 print("[MAIN] BLE started")
 
 
-@periodic(10)
 def thread_task(timer):
     get_telemetry()
     auto_mode()
 
+_task_timer = periodic(10)(thread_task)
 
 try:
     while True:
         ble.tick()
         time.sleep_ms(50)
 except KeyboardInterrupt:
-    thread_task.deinit()   # stop hardware timer
-    ble.stop()             # stop BLE advertising / connections
+    _task_timer.deinit()
+    ble.stop()

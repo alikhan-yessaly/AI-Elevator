@@ -1,9 +1,10 @@
 import time
-from pibody import LED, LEDTower, Servo
+from machine import Pin
+from pibody import LEDTower, Servo
 from config import ELEVATOR_PINS, SERVO_POSES
 from telemetry import telemetry
 
-fan         = LED(ELEVATOR_PINS["air"])               # slot F
+fan         = Pin(27, Pin.OUT)                         # slot F, pin 27
 climate_led = LEDTower(ELEVATOR_PINS["climate_led"])  # slot H: heating/cooling indicator
 lights      = LEDTower(ELEVATOR_PINS["lights"])        # slot G: cabin lighting
 ser         = Servo(ELEVATOR_PINS["servo"])            # pin 9: dispenser
@@ -18,6 +19,9 @@ actuator_state = {
 
 TEMP_HEAT = 20.0  # °C — below this → heater on
 TEMP_COOL = 28.0  # °C — above this → cooler on
+
+# True while LLM has manually set heater or cooler; auto_mode backs off
+_climate_manual = False
 
 # ── internal helpers ────────────────────────────────────────────────────────
 
@@ -36,6 +40,36 @@ def _sync_climate_led():
     climate_led.write()
 
 # ── public command API (from central LLM) ───────────────────────────────────
+
+def heater_on():
+    global _climate_manual
+    _climate_manual = True
+    actuator_state["heater"] = True
+    actuator_state["cooler"] = False
+    _sync_climate_led()
+    _sync_fan()
+
+def heater_off():
+    global _climate_manual
+    _climate_manual = False
+    actuator_state["heater"] = False
+    _sync_climate_led()
+    _sync_fan()
+
+def cooler_on():
+    global _climate_manual
+    _climate_manual = True
+    actuator_state["cooler"] = True
+    actuator_state["heater"] = False
+    _sync_climate_led()
+    _sync_fan()
+
+def cooler_off():
+    global _climate_manual
+    _climate_manual = False
+    actuator_state["cooler"] = False
+    _sync_climate_led()
+    _sync_fan()
 
 def light_on():
     lights.fill((255, 255, 255))
@@ -59,6 +93,8 @@ def dispense():
 # ── auto mode (runs every tick) ─────────────────────────────────────────────
 
 def auto_mode():
+    if _climate_manual:
+        return
     temp = telemetry.get("temp")
     if temp is None:
         return

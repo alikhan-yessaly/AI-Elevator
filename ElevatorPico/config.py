@@ -91,7 +91,7 @@ ELEVATOR_PINS = {
 ### ====== Hardware pins ======
 
 SERVO_POSES = {
-    "open":     110,    # adjust to your servo's open angle
+    "open":     90,    # adjust to your servo's open angle
     "closed":    45,    # adjust to your servo's closed angle
     "delay_ms": 200,  # how long to hold open before closing
 }

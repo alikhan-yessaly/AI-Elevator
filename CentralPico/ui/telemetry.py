@@ -30,11 +30,6 @@ class TelemetryDisplayer:
         display.text("Объем Зерна: " + str(data.volume) + " %  ", x, y)
         y += 13
         display.linear_bar(x, y+8, self.LINE_WIDTH, value=data.volume, min_value=0, max_value=100, height=8, border=True, color=display.YELLOW)
-        y += 4
-        y += 13
-        display.text("Вес машины: " + str(data.weight) + " g  ", x, y)
-        y += 13
-        display.linear_bar(x, y+8, self.LINE_WIDTH, value=data.weight, min_value=0, max_value=300, height=8, border=True, color=display.RED)
         
 
     def render_scales(self, data: ScalesData):
