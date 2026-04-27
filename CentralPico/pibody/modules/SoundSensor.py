@@ -1,21 +1,15 @@
-from ADCExt import ADC
-from PinExt import Pin
+from machine import Pin, ADC
 
-# TODO: Add either read_u16() to analog pin, or expose analog pin altogether
-MODULE_NAME = "SoundSensor"
-class SoundSensor:
+adc_pins = [26, 27, 28]
+
+class SoundSensor():
     def __init__(self, analog_pin, digital_pin):
-        """
-            Sound Sensor Module can return analog or digital value of sound. Threshold of Digital value of sound is defined by a switch on a module.
-        """
+        """Sound Sensor Module can return analog or digital value of sound. Threshold of Digital value of sound is defined by a switch on a module."""
         self._digital = Pin(digital_pin, Pin.IN)
-
-        self._analog = None
-        try:
-            self._analog = ADC(analog_pin)
-        except:
-            print(f"[{MODULE_NAME}] Can't initialize analog port in this slot. Recommended to use sound sensor on slots C or F. Ignore it if you plan on using only read_digital() method")
-
+        if analog_pin not in adc_pins:
+            print("Recommended to use sound sensor on slots C or F. Ignore it if you plan on using only read_digital() function")
+        else:
+            self._analog = ADC(Pin(analog_pin))
     
     def read_digital(self) -> int: 
         """
@@ -23,11 +17,11 @@ class SoundSensor:
         """
         return self._digital.value()
     
-    def read_analog(self, normalized=True) -> float:
+    def read_analog(self) -> float:
         """
             Returns analog value of sound sensor: from 0 to 1.
         """
-        return self._analog.read() if normalized else self._analog.read_u16()
+        return self._analog.read_u16() / 65536
     
     
     def read(self) -> tuple:

@@ -1,5 +1,5 @@
 from config import SCALES_PINS, CAR_PRESENT_MM
-from Picos.Scales.ht771 import Scales
+from ht771 import Scales
 from pibody import Distance
 
 telemetry = {

@@ -31,8 +31,8 @@ from config import (
     MIN_CAR_WEIGHT_GRAMM,
     RECORDS_FILE,
 )
-from Picos.Scales.telemetry import telemetry
-from Picos.Scales.actuators import (
+from telemetry import telemetry
+from actuators import (
     open_gate, close_gate,
     signal_weigh_complete,
     signal_weight_recorded,
@@ -212,16 +212,7 @@ def tick():
                 signal_weigh_complete()
                 open_gate()
                 _gate_close_tick = None
-                _set_state(STATE_EXITING)   # clears buffer after we're done with it
-                gross = _stable_mean()
-                net   = gross - flow_state["tare_weight"]
-                flow_state["gross_weight"] = round(gross, 1)
-                flow_state["net_weight"]   = round(net,   1)
-                print("Loaded car weight accepted: %.1f g  net cargo: %.1f g" % (gross, net))
-                signal_weigh_complete()
-                open_gate()
                 _set_state(STATE_EXITING)
-                _gate_close_tick = None
 
     # ── EXITING ───────────────────────────────────────────────────────────────
     elif state == STATE_EXITING:

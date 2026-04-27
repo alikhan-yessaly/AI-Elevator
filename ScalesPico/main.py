@@ -1,15 +1,44 @@
-# pico = "Elevator"
-pico = "Scales"
-# pico = "Central"
+import time
+import bluetooth
+from ble_transport import BLETransport
+from telemetry import get_telemetry, telemetry
+from weighing_flow import tick, flow_state
+from config import BLE_NAMES, BLE_UUIDS
 
-if pico == "Elevator":
-    from Picos.Elevator.main import main
-elif pico == "Scales":
-    from Picos.Scales.main import main
-elif pico == "Central":
-    from Picos.Central.main import main
-else:
-    print("Invalid pico")
-    exit()
 
-main()
+def build_payload():
+    return {
+        "w":     telemetry.get("weight"),
+        "car":   telemetry.get("car_present"),
+        "dist":  telemetry.get("distance_mm"),
+        "grain": telemetry.get("last_grain_weight"),
+        "net":   flow_state.get("net_weight"),
+    }
+
+
+_uuids = BLE_UUIDS["scales"]
+ble = BLETransport(
+    name=BLE_NAMES["scales"],
+    service_uuid=bluetooth.UUID(int(_uuids["service"], 16)),
+    tx_uuid=bluetooth.UUID(_uuids["tx"]),
+    rx_uuid=bluetooth.UUID(_uuids["rx"]),
+    mode="peripheral",
+    notify_interval_ms=500,
+    payload_provider=build_payload,
+)
+ble.start()
+
+try:
+    while True:
+        get_telemetry()
+        tick()
+        ble.tick()
+        print("[main] state=%s  weight=%s  car=%s  dist=%s" % (
+            flow_state.get("state"),
+            telemetry.get("weight"),
+            telemetry.get("car_present"),
+            telemetry.get("distance_mm"),
+        ))
+        time.sleep_ms(50)
+except KeyboardInterrupt:
+    ble.stop()

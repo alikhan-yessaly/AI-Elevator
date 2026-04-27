@@ -1,112 +1,106 @@
-from pibody.helper import resolve_pins, get_i2c
-
-# TODO: Change ADC slot arrays in Joystick, SoundSensor because now firmware stores pins otherwise
-# 3 Pin
-def LED(slot):
-    from PinExt import Pin
-    return Pin(resolve_pins(slot)[0], Pin.OUT)
-    
-def Button(slot):
-    from PinExt import Pin
-    return Pin(resolve_pins(slot)[0], Pin.IN)
-        
-def ADC(slot):
-    from ADCExt import ADC
-    return ADC(resolve_pins(slot)[0])
-
-def PWM(slot):
-    from PWMExt import PWM
-    return PWM(resolve_pins(slot)[0])
-
-def LEDTower(slot = 8):
-    from NeoPixelExt import NeoPixel
-    return NeoPixel(resolve_pins(slot)[0])
-
-def Buzzer(slot):
-    from .modules.Buzzer import Buzzer as _Buzzer
-    return _Buzzer(resolve_pins(slot)[0])
-
-def Servo(slot : str | tuple):
-    from .modules.Servo import Servo
-    return Servo(resolve_pins(slot)[0])
-
-# I2C
-def GyroAccel(slot, hard_i2c=False):
-    i2c = get_i2c(slot, hard_i2c)
-    i2c_address = i2c.scan()
-    if 0x68 in i2c_address:
-        from I2C.MPU6050 import MPU6050
-        return MPU6050(i2c)
-    if 0x6A in i2c_address:
-        from I2C.LSM6DS3 import LSM6DS3
-        return LSM6DS3(i2c)
-    
-    raise ValueError(f"Invalid i2c address '{i2c.scan()}' for slot '{slot}'")  
-
-def ClimateSensor(slot, hard_i2c=False):
-    from I2C.BME280 import BME280
-    return BME280(get_i2c(slot, hard_i2c))
-    
-
-def ColorSensor(slot, hard_i2c=False):
-    from I2C.VEML6040 import VEML6040
-    return VEML6040(get_i2c(slot, hard_i2c))
-
-def DistanceSensor(slot, hard_i2c=False):
-    from I2C.VL53L0X import VL53L0X
-    return VL53L0X(get_i2c(slot, hard_i2c))
-
-def OLED(slot, hard_i2c=False):
-    from I2C.SSD1306 import SSD1306
-    return SSD1306(get_i2c(slot, hard_i2c), width=128, height=64)
-
-# 4 Pin
-def Encoder(slot : str | tuple):
-    from RotaryEncoder import RotaryEncoder
-    return RotaryEncoder(*resolve_pins(slot))
-
-def Joystick(slot : str | tuple):
-    from .modules.Joystick import Joystick as _Joystick
-    return _Joystick(*resolve_pins(slot))
-
-def SoundSensor(slot : str | tuple):
-    from .modules.SoundSensor import SoundSensor as _SoundSensor
-    return _SoundSensor(*resolve_pins(slot))
-
-# IOT
-def WiFi():
-    from .modules.WiFi import WiFi
-    return WiFi()
-
-def TelegramBot(token):
-    from .modules.TelegramBot import TelegramBot as TGB
-    return TGB(token)
-
-
-# Button Likes
-Switch          = Button
-TouchSensor     = Button
-MotionSensor    = Button
-
-# Analog Likes
-LightSensor     = ADC
-Potentiometer   = ADC
-
-# Sensors
-Climate         = ClimateSensor
-Color           = ColorSensor
-Distance        = DistanceSensor
-Touch           = TouchSensor
-Motion          = MotionSensor
-Light           = LightSensor
-Pot             = Potentiometer
-Sound           = SoundSensor
-
-#Other
-GyroAxel        = GyroAccel
-
-# TODO: How to make it transparent for auto-completions?
 def __getattr__(name):
+    if name == "LED":
+        from .wrappers.generic import LED
+        return LED
+    if name in ("Button", "Switch", "TouchSensor", "MotionSensor", "Touch", "Motion"):
+        from .wrappers.generic import ButtonLike
+        return ButtonLike
+    if name in ("ADC", "LightSensor", "Potentiometer", "Pot", "Light"):
+        from .wrappers.generic import ADC
+        return ADC
+    if name in ("Climate", "ClimateSensor"):
+        from .wrappers.i2c import ClimateSensor
+        return ClimateSensor
+    if name in ("Color", "ColorSensor"):
+        from .wrappers.i2c import ColorSensor
+        return ColorSensor
+    if name in ("Distance", "DistanceSensor"):
+        from .wrappers.i2c import DistanceSensor
+        return DistanceSensor
+    if name in ("GyroAccel", "GyroAxel"):
+        from .wrappers.i2c import GyroAccel
+        return GyroAccel
+    if name == "OLED":
+        from .wrappers.i2c import OLED
+        return OLED
+    if name == "Buzzer":
+        from .wrappers.modules import Buzzer
+        return Buzzer
+    if name == "PWM":
+        from .wrappers.modules import PWM
+        return PWM
+    if name == "Joystick":
+        from .wrappers.modules import Joystick
+        return Joystick
+    if name == "Encoder":
+        from .wrappers.modules import Encoder
+        return Encoder
+    if name in ("SoundSensor", "Sound"):
+        from .wrappers.modules import SoundSensor
+        return SoundSensor
+    if name == "LEDTower":
+        from .wrappers.modules import LEDTower
+        return LEDTower
+    if name == "Servo":
+        from .modules.Servo import Servo
+        return Servo
+    if name == "WiFi":
+        from .iot.WiFi import WiFi
+        return WiFi
+    if name == "TelegramBot":
+        from .iot.telegram_bot import TelegramBot
+        return TelegramBot
     if name == "display":
-        from .modules.Display import Display
-        return Display()
+        from .Display import display
+        return display
+    if name == "demo":
+        from .Demo import demo
+        return demo
+    
+    
+    raise AttributeError(f"module {__name__} has no attribute {name}")
+
+
+# Fake import detection
+# Ignore this part of code, it's just to help IDEs with autocompletion
+try: 
+    _ = 1/0
+except:
+    FAKE_IMPORT = False
+
+if FAKE_IMPORT:
+    from .wrappers.generic import LED, ButtonLike, ADC
+    from .wrappers.i2c import ClimateSensor, ColorSensor, DistanceSensor, GyroAccel, OLED
+    from .wrappers.modules import Buzzer, PWM, Joystick, Encoder, SoundSensor, LEDTower
+    
+    from .modules.Servo import Servo
+
+    from .iot.WiFi import WiFi
+    from .iot.telegram_bot import TelegramBot
+
+    from .Display import display
+    from .Demo import demo
+
+    # Button Likes
+    Button = ButtonLike
+    Switch = ButtonLike
+    TouchSensor = ButtonLike
+    MotionSensor = ButtonLike
+
+    # Analog Likes
+    LightSensor = ADC
+    Potentiometer = ADC
+
+    # Sensors
+    Climate = ClimateSensor
+    Color = ColorSensor
+    Distance = DistanceSensor
+    Touch = TouchSensor
+    Motion = MotionSensor
+    Light = LightSensor
+    Pot = Potentiometer
+    Sound = SoundSensor
+
+    #Other
+    GyroAxel = GyroAccel
+

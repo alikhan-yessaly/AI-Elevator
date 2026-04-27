@@ -21,7 +21,7 @@ class UI:
         volume = self.elevator_data.volume
         self.elevator_icon(volume)
         self.td.render_elevator(self.elevator_data)
-        # self.td.render_scales(self.scales_data)
+        self.td.render_scales(self.scales_data)
 
     def _print_line(self, message, y, background=display.BLACK, text_color=display.WHITE):
         offset = 5

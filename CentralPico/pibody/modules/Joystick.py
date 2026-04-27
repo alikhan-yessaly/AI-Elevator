@@ -1,33 +1,23 @@
-from ADCExt import ADC 
-from machine import Pin
-
-MODULE_NAME = "Joystick"
+from machine import ADC, Pin
 
 class Joystick():
     def __init__(self, pinX, pinY):
-        self.X = None
-        self.Y = None 
-
-        if pinX is not None:
-            try:
-                self.X = ADC(Pin(pinX))
-            except Exception as e:
-                print(f"[{MODULE_NAME}] Failed to init X axis on pin {pinX}: {e}")
-        if pinY is not None:
-            try:
-                self.Y = ADC(Pin(pinY))
-            except Exception as e:
-                print(f"[{MODULE_NAME}] Failed to init Y axis on pin {pinY}: {e}")
+            self.X = ADC(Pin(pinX))
+            self.Y = ADC(Pin(pinY))
 
     def read(self):
-        return (self.read_x(), self.read_y())
+        """
+            Returns value of Joystick for X and Y axis. Value range: from 0 to 1.
+        """
+        x = self.X.read_u16() / 65536
+        y = self.Y.read_u16() / 65536
+        return (x, y)
     
     def read_x(self):
-        if self.X is None:
-            return None
-        return self.X.read()
-
+         """Returns x-axis position value of joystick. Value range: from 0 to 1"""
+         return self.X.read_u16() / 65536
+    
+    
     def read_y(self):
-        if self.Y is None:
-            return None
-        return self.Y.read()
+         """Returns y-axis position value of joystick. Value range: from 0 to 1"""
+         return self.Y.read_u16() / 65536

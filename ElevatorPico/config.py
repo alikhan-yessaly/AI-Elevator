@@ -73,23 +73,21 @@ I2S_CONFIG = {
 ## ================================================
 
 ### ====== Hardware pins ======
-AIR_PIN = "F"
-COOLER_PIN = "H"
-CLIMATE_PIN = "B"
-DISTANCE_PIN = "A"
-SERVO_PIN = 9
-LIGHTS_PIN = "G"
+AIR_PIN         = "F"   # air fan
+CLIMATE_LED_PIN = "H"   # LEDTower: indicates heating / cooling state
+CLIMATE_PIN     = "B"   # climate sensor (temp + humidity)
+DISTANCE_PIN    = "A"
+SERVO_PIN       = 9     # dispenser servo
+LIGHTS_PIN      = "G"   # LEDTower: cabin lighting
 
 ELEVATOR_PINS = {
-    "air": AIR_PIN,
-    "cooler": COOLER_PIN,
-    "climate": CLIMATE_PIN,
-    "distance": DISTANCE_PIN,
-    "lights": LIGHTS_PIN,
-    "servo": SERVO_PIN,
+    "air":         AIR_PIN,
+    "climate_led": CLIMATE_LED_PIN,
+    "climate":     CLIMATE_PIN,
+    "distance":    DISTANCE_PIN,
+    "lights":      LIGHTS_PIN,
+    "servo":       SERVO_PIN,
 }
-
-
 ### ====== Hardware pins ======
 
 SERVO_POSES = {

@@ -32,14 +32,16 @@ class WiFi:
         self.wlan.active(True)
 
 
-    def connect(self, ssid: str, password: str, timeout: int = 20):
+    def connect(self, ssid: str, password: str, timeout: int = 10):
         if self.wlan.isconnected():
             print("Already connected.")
             print(f"IP address: {self.wlan.ifconfig()[0]}")
             return self.wlan.ifconfig()
 
         print(f"Connecting to {ssid}...")
+        self.wlan.active(True)
         self.wlan.connect(ssid, password)
+
         start = time.ticks_ms()
         while not self.wlan.isconnected():
             if time.ticks_diff(time.ticks_ms(), start) > (timeout * 1000):

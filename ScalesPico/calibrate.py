@@ -11,7 +11,7 @@ Steps:
 
 from time import sleep_us
 from config import SCALES_PINS, KNOWN_WEIGHT_GRAMM
-from Picos.Scales.ht771 import Scales
+from ht771 import Scales
 
 scales = Scales(SCALES_PINS["dt"], SCALES_PINS["sck"])
 

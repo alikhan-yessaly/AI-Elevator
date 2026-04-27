@@ -1,56 +1,31 @@
-from machine import I2C, SoftI2C, Pin
-
-# Slot Name: (Main Pin, Secondary Pin, I2C Bus)
 _SLOT_MAP = {
-    'A': ('A1', 'A2'),
-    'B': ('B1', 'B2'),
-    'C': ('C1', 'C2'),
-    'D': ('D1', 'D2'),
-    'E': ('E1', 'E2'),
-    'F': ('F1', 'F2'),
-    'G': ('G1', 'G2'),
-    'H': ('H1', 'H2'),
+    'A': (0, 1),
+    'B': (2, 3),
+    'C': (28, 22),
+    'D': (4, 5),
+    'E': (6, 7),
+    'F': (26, 27),
+    'G': (16, 17),
+    'H': (18, 19),
 }
 
-_I2C_MAP = {
-    'A': (0),
-    'B': (1),
-    'C': (None),
-    'D': (0),
-    'E': (1),
-    'F': (1),
-    'G': (0),
-    'H': (1),
-}
-
-def resolve_pins(slot):
-    """
-        Resolves slot (str), pin (int), or manual pins (tuple) into a tuple of pins.
-        Returns: tuple of (pin_a, pin_b) or (pin_a,)
-    """
-    if isinstance(slot, int):
-        return (slot, None)
-
-    if isinstance(slot, tuple):
+# Functions-helpers
+def get_pins_by_slot(slot):
+    if type(slot) == str:
+        slot = slot.upper()[0]
+        if slot not in _SLOT_MAP:
+            raise ValueError(f"Invalid slot '{slot}'. Use A, B, C, D, E, or F")
+        sda, scl = _SLOT_MAP[slot]
+        return (sda, scl)
+    elif type(slot) == tuple:
         return slot
+    else:
+        raise ValueError("Wrong slot type")
 
-    if isinstance(slot, str):
-        key = slot.upper()[0]
-        if key not in _SLOT_MAP:
-            valid = ", ".join(sorted(_SLOT_MAP.keys()))
-            raise ValueError(f"Invalid slot '{slot}'. Valid options: {valid}")
-        return _SLOT_MAP[key]
-
-    raise TypeError(f"Unsupported slot type: {type(slot).__name__}")
-
-
-def get_i2c(slot, hard_i2c=False):
-    if isinstance(slot, (I2C, SoftI2C)):
+def get_pin(slot):
+    if type(slot) == int:
         return slot
-
-    sda, scl = resolve_pins(slot)
-    if hard_i2c:
-        return I2C(id=_I2C_MAP[slot], scl=Pin(scl), sda=Pin(sda))
-    else: 
-        return SoftI2C(scl=Pin(scl), sda=Pin(sda))
-
+    elif type(slot) == str:
+        return get_pins_by_slot(slot)[0]
+    else:
+        raise ValueError("Wrong slot type")

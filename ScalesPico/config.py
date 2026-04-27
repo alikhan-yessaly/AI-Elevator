@@ -17,6 +17,19 @@ BLE_NAMES = {
     "scales": BLE_SCALES,
     "elevator": BLE_ELEVATOR,
 }
+
+BLE_UUIDS = {
+    "elevator": {
+        "service": "181B",
+        "tx": "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",
+        "rx": "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",
+    },
+    "scales": {
+        "service": "181A",
+        "tx": "6E400013-B5A3-F393-E0A9-E50E24DCCA9E",
+        "rx": "6E400012-B5A3-F393-E0A9-E50E24DCCA9E",
+    },
+}
 ### ====== BLE configuration ======
 
 ### ====== Modules configuration ======
