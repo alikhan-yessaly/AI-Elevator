@@ -73,7 +73,7 @@ I2S_CONFIG = {
 ## ================================================
 
 ### ====== Hardware pins ======
-AIR_PIN         = "F"   # air fan
+AIR_PIN         = 8 #"F"   # air fan
 CLIMATE_LED_PIN = "H"   # LEDTower: indicates heating / cooling state
 CLIMATE_PIN     = "B"   # climate sensor (temp + humidity)
 DISTANCE_PIN    = "A"
@@ -91,9 +91,10 @@ ELEVATOR_PINS = {
 ### ====== Hardware pins ======
 
 SERVO_POSES = {
-    "open":     90,    # adjust to your servo's open angle
+    "open":      90,    # adjust to your servo's open angle
     "closed":    45,    # adjust to your servo's closed angle
-    "delay_ms": 200,  # how long to hold open before closing
+    "delay_ms":  200,   # how long to hold open before closing
+    "deinit_ms": 2500,  # wait after close command before deiniting PWM
 }
 ## ================================================
 ## Elevator configuration

@@ -4,13 +4,15 @@ Controls the gate servo and buzzer.
 All hardware objects live here; everything else imports the API functions.
 """
 
-from pibody import Servo, Buzzer
+import time
+from pibody import Servo, Buzzer, LEDTower
 from config import SCALES_PINS, SCALES_SERVO_POSES
 
 # ── Hardware ──────────────────────────────────────────────────────────────────
 
-gate  = Servo(SCALES_PINS["servo"])
-buzzer = Buzzer(SCALES_PINS["buzzer"])
+gate     = Servo(SCALES_PINS["servo"])
+buzzer   = Buzzer(SCALES_PINS["buzzer"])
+gate_led = LEDTower(SCALES_PINS["gate_led"])
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
@@ -21,12 +23,22 @@ actuator_state = {
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _gate_open():
+    gate.on()
     gate.angle(SCALES_SERVO_POSES["open"])
     actuator_state["gate"] = "open"
+    gate_led.fill((0, 255, 0))
+    gate_led.write()
+    time.sleep_ms(SCALES_SERVO_POSES["deinit_ms"])
+    gate.off()
 
 def _gate_close():
+    gate.on()
     gate.angle(SCALES_SERVO_POSES["closed"])
     actuator_state["gate"] = "closed"
+    gate_led.fill((255, 0, 0))
+    gate_led.write()
+    time.sleep_ms(SCALES_SERVO_POSES["deinit_ms"])
+    gate.off()
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
@@ -63,4 +75,4 @@ def signal_error():
 def get_state():
     return dict(actuator_state)
 
-close_gate()
+_gate_close()  # physically close on boot

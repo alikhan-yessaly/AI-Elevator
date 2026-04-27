@@ -107,6 +107,7 @@ SCALES_PINS = {
     "distance": "F",
     "servo": 9,
     "buzzer": "C",
+    "gate_led": "G",
 }
 ### ====== Hardware pins ======
 
@@ -120,8 +121,9 @@ MIN_CAR_WEIGHT_GRAMM    = 30.0          # g minimum weight to consider a car on 
 
 ### ====== Servo angles ======
 SCALES_SERVO_POSES = {
-    "open":   90,   # gate open angle
-    "closed":  0,   # gate closed angle
+    "open":      90,    # gate open angle
+    "closed":     0,    # gate closed angle
+    "deinit_ms": 2500,  # wait after move before deiniting PWM
 }
 ### ====== Servo angles ======
 

@@ -1,10 +1,9 @@
 import time
-from machine import Pin
 from pibody import LEDTower, Servo
-from config import ELEVATOR_PINS, SERVO_POSES
+from config import ELEVATOR_PINS, SERVO_POSES, AIR_PIN
 from telemetry import telemetry
 
-fan         = Pin(26, Pin.OUT)                         # slot F, pin 27
+fan         = Servo(AIR_PIN)                           # pin 8, servo-controlled fan
 climate_led = LEDTower(ELEVATOR_PINS["climate_led"])  # slot H: heating/cooling indicator
 lights      = LEDTower(ELEVATOR_PINS["lights"])        # slot G: cabin lighting
 ser         = Servo(ELEVATOR_PINS["servo"])            # pin 9: dispenser
@@ -27,7 +26,7 @@ _climate_manual = False
 
 def _sync_fan():
     on = actuator_state["heater"] or actuator_state["cooler"]
-    fan.on() if on else fan.off()
+    fan.angle(180) if on else fan.angle(90)
     actuator_state["fan"] = on
 
 def _sync_climate_led():
@@ -84,10 +83,13 @@ def light_off():
     return actuator_state
 
 def dispense():
+    ser.on()
     ser.angle(SERVO_POSES["open"])
     actuator_state["dispenser"] = True
     time.sleep_ms(SERVO_POSES["delay_ms"])
     ser.angle(SERVO_POSES["closed"])
+    time.sleep_ms(SERVO_POSES["deinit_ms"])
+    ser.off()
     actuator_state["dispenser"] = False
 
 # ── auto mode (runs every tick) ─────────────────────────────────────────────

@@ -67,22 +67,29 @@ class UI:
 
         self._print_line(message, 300, background, text_color)
 
-    def state(self, wifi_ok, elevator_ok, scales_ok):
+    def state(self, wifi_ok, elevator_ok, scales_ok, flash=False):
         print("WiFi:%s Elev:%s Scal:%s" % (wifi_ok, elevator_ok, scales_ok))
-        _GREY = display.color(80, 80, 80)
+
+        def _dot(status):
+            if status is True:
+                return display.GREEN
+            if status is None:                          # connecting — flash blue
+                return display.BLUE if flash else display.color(0, 0, 80)
+            return display.color(80, 80, 80)            # disconnected — grey
+
         display.fill_rect(0, 190, 240, 20, display.BLACK)
 
-        # WiFi dot + label
-        display.fill_circle(10, 200, 5, display.GREEN if wifi_ok else _GREY)
-        display.text("WiFi", 20, 192)
+        display.fill_circle(10,  200, 5, _dot(wifi_ok))
+        display.text("WiFi", 20,  192)
 
-        # Elevator BLE dot + label
-        display.fill_circle(90, 200, 5, display.GREEN if elevator_ok else _GREY)
+        display.fill_circle(90,  200, 5, _dot(elevator_ok))
         display.text("Elev", 100, 192)
 
-        # Scales BLE dot + label
-        display.fill_circle(170, 200, 5, display.GREEN if scales_ok else _GREY)
+        display.fill_circle(170, 200, 5, _dot(scales_ok))
         display.text("Scal", 180, 192)
+
+    def clear_status(self):
+        display.fill_rect(0, 300, 240, 20, display.WHITE)
 
     def heard(self, message):
         message = f"Я услышал: {message}"

@@ -47,26 +47,29 @@ llm  = LLM(key=LLM_KEY, url=LLM_URL, model=MODEL, system_prompt=system_prompt)
 stt  = STT(host=STT_HOST, path=STT_PATH, api_key=STT_KEY)
 
 # ── State ─────────────────────────────────────────────────────────────────────
-_wifi_ok      = False
-_elevator_ble = False
-_scales_ble   = False
+# None = connecting (flash blue), True = connected (green), False = disconnected (grey)
+_wifi_ok      = None
+_elevator_ble = None
+_scales_ble   = None
 _ui_dirty     = False   # set True by BLE IRQ callbacks; cleared in main loop
+_flash_phase  = False
+_last_flash_ms = 0
 
 
 def _redraw_status():
-    ui.state(_wifi_ok, _elevator_ble, _scales_ble)
+    ui.state(_wifi_ok, _elevator_ble, _scales_ble, _flash_phase)
 
 
 def _set_elevator_ble(connected):
     # Called from BLE IRQ context — only set flags, never touch display here.
     global _elevator_ble, _ui_dirty
-    _elevator_ble = connected
+    _elevator_ble = True if connected else None  # None = reconnecting
     _ui_dirty     = True
 
 
 def _set_scales_ble(connected):
     global _scales_ble, _ui_dirty
-    _scales_ble = connected
+    _scales_ble = True if connected else None
     _ui_dirty   = True
 
 
@@ -93,15 +96,15 @@ def update_scales(data):
 def ensure_wifi():
     global _wifi_ok
     if wifi.is_connected():
-        if not _wifi_ok:
+        if _wifi_ok is not True:
             _wifi_ok = True
             _redraw_status()
         return True
-    _wifi_ok = False
+    _wifi_ok = None             # flash blue while reconnecting
     _redraw_status()
     ui.status_message("Переподключаюсь к WiFi...")
     ok = wifi.ensure_connected(SSID, PASSWORD, retries=5, delay=3)
-    _wifi_ok = ok
+    _wifi_ok = True if ok else False
     ui.status_message("WiFi подключён" if ok else "WiFi недоступен", error=not ok)
     _redraw_status()
     return ok
@@ -132,10 +135,13 @@ ble_client.start()
 
 # ── Initial WiFi (3 retries — don't block BLE scan for 30 s) ─────────────────
 ui.status_message("Подключаюсь к WiFi...")
+_wifi_ok = None             # flash while attempting initial connect
+_redraw_status()
 if wifi.ensure_connected(SSID, PASSWORD, retries=3, delay=2):
     _wifi_ok = True
     ui.status_message("WiFi подключён")
 else:
+    _wifi_ok = False
     ui.status_message("WiFi недоступен — работаю без сети", error=True)
 
 _redraw_status()
@@ -152,6 +158,13 @@ try:
         if _ui_dirty:
             _ui_dirty = False
             _redraw_status()
+
+        # Flash animation — tick every 400ms when any state is connecting
+        if _wifi_ok is None or _elevator_ble is None or _scales_ble is None:
+            if time.ticks_diff(now, _last_flash_ms) >= 400:
+                _last_flash_ms = now
+                _flash_phase = not _flash_phase
+                _redraw_status()
 
         # Refresh status bar every 2 s and detect silent WiFi drops
         if time.ticks_diff(now, _last_status_ms) >= 2000:
@@ -209,12 +222,12 @@ try:
             ble_client.tick()
 
             # ── STT → LLM → BLE ───────────────────────────────────────────────
-            ui.status_large("Думаю...")
             try:
                 if not ensure_wifi():
                     ui.status_message("Нет WiFi — пропускаю", error=True)
                     continue
 
+                ui.status_message("Распознавание речи...")
                 text = stt.transcribe_from_file(WAV_FILE)
                 ble_client.tick()
                 ui.clear_bottom()
@@ -224,14 +237,17 @@ try:
                     ui.status_message("Нет WiFi — пропускаю", error=True)
                     continue
 
+                ui.status_message("Запрос в KazLLM...")
                 response = llm.ask(text)
                 ble_client.tick()
                 ui.command(response)
 
+                ui.status_message("Отправка команды...")
                 send_ok = ble_client.send("Elevator Pico", response)
-                ui.status_message(
-                    "Успешно отправлено BLE" if send_ok else "Не удалось отправить BLE",
-                    error=not send_ok)
+                if send_ok:
+                    ui.clear_status()
+                else:
+                    ui.status_message("Не удалось отправить BLE", error=True)
 
             except Exception as e:
                 print("[Pipeline] Error:", e)
