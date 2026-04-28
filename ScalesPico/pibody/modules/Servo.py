@@ -2,6 +2,7 @@ from machine import PWM, Pin
 
 class Servo:
     def __init__(self, pin):
+        self._pin_num = pin
         self.servo = PWM(Pin(pin))
 
         self._freq = 50
@@ -40,7 +41,9 @@ class Servo:
             self.servo.duty_u16(duty)
 
     def on(self):
-        self.servo.init()
-        
+        self.servo = PWM(Pin(self._pin_num))
+        self.servo.freq(self._freq)
+
     def off(self):
         self.servo.deinit()
+        Pin(self._pin_num, Pin.OUT, value=0)  # drive low — no floating signal after deinit

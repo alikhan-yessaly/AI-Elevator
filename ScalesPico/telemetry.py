@@ -51,8 +51,8 @@ def get_weight():
 def get_distance():
     """Read ToF sensor and update car_present flag."""
     mm = distance_sensor.read()
-    if mm < 30 or mm > 300:
-        return  # invalid reading, keep previous telemetry values
+    if mm < 30:
+        return  # sensor noise, keep previous values
     telemetry["distance_mm"] = mm
     telemetry["car_present"] = mm <= CAR_PRESENT_MM
     return mm

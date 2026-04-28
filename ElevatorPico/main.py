@@ -1,6 +1,5 @@
 import time
 import bluetooth
-from helpers import periodic
 from ble_transport import BLETransport
 from config import BLE_NAMES, BLE_UUIDS
 from actuators import heater_on, heater_off, cooler_on, cooler_off, light_on, light_off, dispense, auto_mode, actuator_state
@@ -9,10 +8,12 @@ from telemetry import telemetry, get_telemetry
 
 def build_payload():
     return {
-        "t": telemetry.get("temp"),
-        "h": telemetry.get("hum"),
-        "v": telemetry.get("dist"),
-        "w": 200  # Dummy weight — replace with real sensor value, clamp 0–500
+        "t":    telemetry.get("temp"),
+        "h":    telemetry.get("hum"),
+        "v":    telemetry.get("dist"),
+        "w":    200,  # Dummy weight
+        "cool": actuator_state["cooler"],
+        "heat": actuator_state["heater"],
     }
 
 
@@ -51,16 +52,19 @@ ble.start()
 print("[MAIN] BLE started")
 
 
-def thread_task(timer):
-    get_telemetry()
-    auto_mode()
-
-_task_timer = periodic(10)(thread_task)
+_TELEMETRY_MS = 100   # 10 Hz
+_last_telemetry = 0
 
 try:
     while True:
         ble.tick()
+
+        now = time.ticks_ms()
+        if time.ticks_diff(now, _last_telemetry) >= _TELEMETRY_MS:
+            _last_telemetry = now
+            get_telemetry()
+            auto_mode()
+
         time.sleep_ms(50)
 except KeyboardInterrupt:
-    _task_timer.deinit()
     ble.stop()

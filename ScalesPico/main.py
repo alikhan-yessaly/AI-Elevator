@@ -4,22 +4,22 @@ from ble_transport import BLETransport
 from telemetry import get_telemetry, telemetry
 from weighing_flow import tick, flow_state
 from config import BLE_NAMES, BLE_UUIDS
-from actuators import open_gate, close_gate, actuator_state
+from actuators import open_gate, close_gate, manual_open_gate, actuator_state
 
 
 def build_payload():
     return {
-        "w":     round(telemetry.get("weight") or 0),
-        "car":   telemetry.get("car_present"),
-        "dist":  telemetry.get("distance_mm"),
-        "grain": telemetry.get("last_grain_weight"),
-        "net":   flow_state.get("net_weight"),
+        "w":      round(telemetry.get("weight") or 0),
+        "car":    telemetry.get("car_present"),
+        "dist":   telemetry.get("distance_mm"),
+        "net":    flow_state.get("last_net_weight", 0),
+        "car_id": flow_state.get("last_car_id", 0),
     }
 
 
 def command_handler(cmd):
     commands = {
-        "open_gate()":  open_gate,
+        "open_gate()":  manual_open_gate,   # manual override, no weighing flow
         "close_gate()": close_gate,
     }
     fn = commands.get(cmd)

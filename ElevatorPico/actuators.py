@@ -7,6 +7,7 @@ fan         = Servo(AIR_PIN)                           # pin 8, servo-controlled
 climate_led = LEDTower(ELEVATOR_PINS["climate_led"])  # slot H: heating/cooling indicator
 lights      = LEDTower(ELEVATOR_PINS["lights"])        # slot G: cabin lighting
 ser         = Servo(ELEVATOR_PINS["servo"])            # pin 9: dispenser
+ser.off()                                              # deinit immediately — only powered during dispense()
 
 actuator_state = {
     "fan":       False,
@@ -26,7 +27,13 @@ _climate_manual = False
 
 def _sync_fan():
     on = actuator_state["heater"] or actuator_state["cooler"]
-    fan.angle(180) if on else fan.angle(90)
+    if on:
+        fan.on()         # reinit PWM
+        fan.angle(180)   # spin — stay powered, do NOT deinit
+    else:
+        fan.angle(90)    # send neutral/stop signal
+        time.sleep_ms(300)
+        fan.off()        # deinit — no PWM while idle, no heat
     actuator_state["fan"] = on
 
 def _sync_climate_led():

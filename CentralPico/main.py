@@ -14,10 +14,27 @@ from TelemetryData import ElevatorData, ScalesData
 import os
 import gc
 import time
+from machine import Pin
 
 WAV_FILE = "/sd/recording.wav"
 
-button = Button("E")
+button       = Button("E")
+dispense_btn = Pin(20, Pin.IN, Pin.PULL_DOWN)
+gate_btn     = Pin(21, Pin.IN, Pin.PULL_DOWN)
+
+_dispense_pending = False
+_gate_pending     = False
+
+def _dispense_irq(p):
+    global _dispense_pending
+    _dispense_pending = True
+
+def _gate_irq(p):
+    global _gate_pending
+    _gate_pending = True
+
+dispense_btn.irq(trigger=Pin.IRQ_RISING, handler=_dispense_irq)
+gate_btn.irq(trigger=Pin.IRQ_RISING,     handler=_gate_irq)
 
 # ── UI initialised first so every subsequent failure can show on screen ───────
 ui = UI()
@@ -87,7 +104,12 @@ def update_elevator(data):
 
 def update_scales(data):
     try:
-        ui.scales_data = ScalesData(weight=data['w'], car_presence=data.get('car', False))
+        ui.scales_data = ScalesData(
+            weight=data['w'],
+            car_presence=data.get('car', False),
+            last_net_weight=data.get('net', 0),
+            last_car_id=data.get('car_id', 0),
+        )
         ui.update()
     except Exception as e:
         print("Scales data error:", e)
@@ -194,6 +216,18 @@ try:
                 continue
             ui.status_message("Микрофон готов")
 
+        # ── Manual dispense button (GP20) ─────────────────────────────────────
+        if _dispense_pending:
+            _dispense_pending = False
+            ok = ble_client.send("Elevator Pico", "dispense()")
+            ui.status_message("Dispense отправлен" if ok else "Dispense: нет BLE", error=not ok)
+
+        # ── Manual gate button (GP21) ──────────────────────────────────────────
+        if _gate_pending:
+            _gate_pending = False
+            ok = ble_client.send("Scales Pico", "open_gate()")
+            ui.status_message("Ворота открыты" if ok else "Ворота: нет BLE", error=not ok)
+
         # ── Button pressed → recording pipeline ───────────────────────────────
         if button.read():
             ui.clear_bottom()
@@ -237,17 +271,23 @@ try:
                     ui.status_message("Нет WiFi — пропускаю", error=True)
                     continue
 
-                ui.status_message("Запрос в KazLLM...")
+                ui.status_message("Запрос в Alem LLM...")
                 response = llm.ask(text)
                 ble_client.tick()
                 ui.command(response)
 
-                ui.status_message("Отправка команды...")
-                send_ok = ble_client.send("Elevator Pico", response)
-                if send_ok:
-                    ui.clear_status()
+                if response == "unknown":
+                    ui.status_message("Команда не распознана", error=True)
+                elif response in ("LLM Error", "No choices"):
+                    ui.status_message("Ошибка Alem LLM", error=True)
                 else:
-                    ui.status_message("Не удалось отправить BLE", error=True)
+                    ui.status_message("Отправка команды...")
+                    target = "Scales Pico" if response == "open_gate()" else "Elevator Pico"
+                    send_ok = ble_client.send(target, response)
+                    if send_ok:
+                        ui.clear_status()
+                    else:
+                        ui.status_message("Не удалось отправить BLE", error=True)
 
             except Exception as e:
                 print("[Pipeline] Error:", e)

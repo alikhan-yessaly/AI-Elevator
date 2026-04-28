@@ -37,6 +37,7 @@ from actuators import (
     signal_weigh_complete,
     signal_weight_recorded,
     signal_error,
+    manual_gate_active,
 )
 
 # ── States ─────────────────────────────────────────────────────────────────────
@@ -50,11 +51,13 @@ STATE_EXITING         = "exiting"
 # ── Shared flow state (broadcast via BLE) ─────────────────────────────────────
 
 flow_state = {
-    "state":        STATE_IDLE,
-    "car_id":       None,
-    "tare_weight":  None,
-    "gross_weight": None,
-    "net_weight":   None,
+    "state":           STATE_IDLE,
+    "car_id":          None,
+    "tare_weight":     None,
+    "gross_weight":    None,
+    "net_weight":      None,
+    "last_car_id":     0,
+    "last_net_weight": 0,
 }
 
 # ── Internal bookkeeping ───────────────────────────────────────────────────────
@@ -158,8 +161,8 @@ def tick():
 
     # ── IDLE ──────────────────────────────────────────────────────────────────
     if state == STATE_IDLE:
-        # Only open gate if no session is currently active
-        if car_present and not car_in_territory:
+        # Only open gate if no session is active and manual override is not running
+        if car_present and not car_in_territory and not manual_gate_active:
             flow_state["car_id"]       = _next_id
             flow_state["tare_weight"]  = None
             flow_state["gross_weight"] = None
@@ -227,6 +230,8 @@ def tick():
                     flow_state["gross_weight"],
                     flow_state["net_weight"],
                 )
+                flow_state["last_car_id"]     = flow_state["car_id"]
+                flow_state["last_net_weight"] = flow_state["net_weight"]
                 signal_weight_recorded()
                 telemetry["car_in_territory"] = False
                 _gate_close_tick = None

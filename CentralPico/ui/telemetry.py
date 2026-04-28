@@ -35,11 +35,14 @@ class TelemetryDisplayer:
     def render_scales(self, data: ScalesData):
         x = self.scales_px
         y = self.scales_py
-        display.text("Вес машины: " + str(data.weight) + " g  ", x, y)
+        display.text("Вес машины: " + str(data.weight) + " г  ", x, y)
         y += 13
         display.linear_bar(x, y+8, self.LINE_WIDTH, value=data.weight, min_value=0, max_value=300, height=8, border=True, color=display.RED)
-        y += 4
+        y += 15
+        display.text("Последний груз:", x, y)
         y += 13
-        presence_msg = "Машина у ворот" if data.car_presence else "Врата свободны"
-        display.text(presence_msg, x, y)
+        if data.last_car_id:
+            display.text("Маш.№" + str(data.last_car_id) + ": " + str(round(data.last_net_weight)) + " г  ", x, y)
+        else:
+            display.text("нет данных          ", x, y)
 

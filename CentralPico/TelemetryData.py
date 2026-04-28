@@ -10,13 +10,8 @@ class ElevatorData:
         self.heating     = heating
         
 class ScalesData:
-    def __init__(self, weight: int = 0, car_presence: bool = False):
-        """
-            Initialize telemetry values
-
-            Args:
-            weight (int): Weight in grams
-            car_presence (bool): Whether car is at the gate or not
-        """
+    def __init__(self, weight: int = 0, car_presence: bool = False, last_net_weight: int = 0, last_car_id: int = 0):
         self.weight = weight
         self.car_presence = car_presence
+        self.last_net_weight = last_net_weight
+        self.last_car_id = last_car_id
