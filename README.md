@@ -3,7 +3,7 @@
 Voice-controlled smart grain silo with three Raspberry Pi Pico W boards. Central Pico records voice commands, sends them through STT → LLM, and forwards the result to the Elevator or Scales Pico over BLE. Live telemetry from both peripherals is shown on an ST7789 display.
 
 ```
-Central Pico  ──BLE──▶  Elevator Pico   (climate, fan, dispenser servo)
+Central Pico  ──BLE──▶  Elevator Pico   (climate, fan, dispenser servo, distance/grain level)
               ──BLE──▶  Scales Pico     (load cell, gate servo, ToF sensor)
 ```
 
